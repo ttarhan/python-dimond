@@ -95,13 +95,14 @@ class Notification(btle.DefaultDelegate):
       self.callback(self.link.mesh, decrypted)
 
 class dimond:
-  def __init__(self, vendor, mac, name, password, mesh=None, callback=None):
+  def __init__(self, vendor, mac, name, password, mesh=None, callback=None, auto_notifications=True):
     self.vendor = vendor
     self.mac = mac
     self.macarray = mac.split(':')
     self.name = name
     self.password = password
     self.callback = callback
+    self.auto_notifications = auto_notifications
     self.mesh = mesh
     self.packet_count = random.randrange(0xffff)
     self.macdata = [int(self.macarray[5], 16), int(self.macarray[4], 16), int(self.macarray[3], 16), int(self.macarray[2], 16), int(self.macarray[1], 16), int(self.macarray[0], 16)]
@@ -135,9 +136,26 @@ class dimond:
     if self.callback is not None:
       self.device.setDelegate(Notification(self, self.callback))
       self.notification.write(bytes([0x1]), withResponse=True)
-      thread = threading.Thread(target=self.wait_for_notifications)
-      thread.daemon = True
-      thread.start()
+
+      if self.auto_notifications:
+        thread = threading.Thread(target=self.wait_for_notifications)
+        thread.daemon = True
+        thread.start()
+
+  def process_notifications(self, timeout):
+    initial = time.time()
+    while True:
+      remaining = timeout - (time.time() - initial)
+      if remaining <= 0:
+        break
+    
+      try:
+        self.device.waitForNotifications(remaining)
+  
+      except Exception as e:
+        print("Reconnecting during notification processing")
+        time.sleep(0.5)
+        self.connect()
 
   def wait_for_notifications(self):
       while True:
@@ -172,5 +190,7 @@ class dimond:
       try:
         response = self.control.write(bytes(enc_packet))
         break
-      except:
+      except Exception as e:
+        print("Reconnecting during send")
+        time.sleep(1)
         self.connect()
